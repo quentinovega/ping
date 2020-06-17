@@ -1,0 +1,73 @@
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${APPLICATION_NAME}
+spec:
+  selector:
+    app: ${APPLICATION_NAME}
+  ports:
+    - port: ${EXPOSED_PORT}
+      targetPort: ${CONTAINER_PORT}
+---
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${APPLICATION_NAME}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ${APPLICATION_NAME}
+  template:
+    metadata:
+      labels:
+        app: ${APPLICATION_NAME}
+    spec:
+      initContainers:
+        - name: check-redis
+          image: registry.dev.test:5000/mytools:0.0.0
+          command: [
+            'sh', '-c',
+            'until redis-cli -h redis-master.database ping; do echo "👋 Redis?"; sleep 3; done; echo "🎉 Redis!"'
+          ]
+      containers:
+        - name: ${APPLICATION_NAME}
+          image: ${DOCKER_USER}/${IMAGE_NAME}:${TAG}
+          ports:
+            - containerPort: ${CONTAINER_PORT}
+          env:
+            - name: REDIS_PORT
+              value: "6379"
+            - name: REDIS_HOST
+              value: "redis-master.database"
+            - name: SERVICE_NAME
+              value: "ping-service"
+            - name: SERVICE_HOST
+              value: "${HOST}"
+            - name: SERVICE_PORT
+              value: "80"
+          imagePullPolicy: Always
+          resources:
+            limits:
+              cpu: "1"
+              memory: "128Mi"
+            requests:
+              cpu: "1"
+              memory: "128Mi"
+---
+# Ingress
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ${APPLICATION_NAME}
+spec:
+  rules:
+    - host: ${HOST}
+      http:
+        paths:
+          - backend:
+              serviceName: ${APPLICATION_NAME}
+              servicePort: ${EXPOSED_PORT}
